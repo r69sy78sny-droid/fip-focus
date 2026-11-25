@@ -128,6 +128,68 @@ def judge(f, dur_s):
     bad = [r for ok, r in checks if not ok]
     return (not bad), ("; ".join(bad) if bad else "ok")
 
+
+# --- Secours 2 : AcousticBrainz (via MusicBrainz) ------------------------
+_last_mb = [0.0]
+def mb_get(url):
+    wait = 1.1 - (time.time() - _last_mb[0])
+    if wait > 0: time.sleep(wait)
+    _last_mb[0] = time.time()
+    return http(url)
+
+def acousticbrainz(artist, title):
+    """Retourne un dict de classifieurs haut niveau, ou None (base figée en 2022)."""
+    try:
+        q = f'recording:"{title}" AND artist:"{artist}"'
+        j = mb_get("https://musicbrainz.org/ws/2/recording?" + urllib.parse.urlencode({"query": q, "fmt": "json", "limit": 5}))
+        for r in j.get("recordings", []):
+            if r.get("score", 0) < 90: continue
+            try:
+                hl = http(f"https://acousticbrainz.org/api/v1/{r['id']}/high-level")["highlevel"]
+                return {k: hl[k]["all"] for k in ("voice_instrumental", "mood_aggressive", "mood_party", "mood_relaxed") if k in hl}
+            except Exception:
+                continue
+    except Exception as e:
+        log("acousticbrainz:", e)
+    return None
+
+def judge_ab(a):
+    inst = a.get("voice_instrumental", {}).get("instrumental", 0)
+    c = [(inst >= 0.65, f"instrumental {inst:.2f}"),
+         (a.get("mood_aggressive", {}).get("not_aggressive", 1) >= 0.7, "agressif"),
+         ]  # mood_party écarté : peu fiable (Brian Eno classé « festif »)
+    bad = [r for ok, r in c if not ok]
+    return (not bad), ("AB " + ("; ".join(bad) if bad else "ok"))
+
+# --- Secours 3 : tags Last.fm (clé LASTFM_API_KEY facultative) -----------
+OK_TAGS = {"instrumental", "ambient", "classical", "piano", "neoclassical", "post-classical", "downtempo",
+           "chillout", "chill", "jazz", "cool jazz", "bossa nova", "lounge", "electronica", "minimal",
+           "soundtrack", "modern classical", "drone", "new age", "easy listening", "trip-hop"}
+BAD_TAGS = {"rap", "hip-hop", "hip hop", "metal", "punk", "hardcore", "spoken word", "chanson", "chanson francaise",
+            "singer-songwriter", "pop", "rock", "indie rock", "hard rock", "reggae", "ska", "dance", "house", "techno"}
+
+def lastfm_tags(artist, title):
+    key = os.environ.get("LASTFM_API_KEY")
+    if not key: return None
+    try:
+        j = http("https://ws.audioscrobbler.com/2.0/?" + urllib.parse.urlencode(
+            {"method": "track.getTopTags", "artist": artist, "track": title, "api_key": key, "format": "json", "autocorrect": 1}))
+        tags = [t["name"].lower() for t in j.get("toptags", {}).get("tag", [])[:8]]
+        if tags: return tags
+        j = http("https://ws.audioscrobbler.com/2.0/?" + urllib.parse.urlencode(
+            {"method": "artist.getTopTags", "artist": artist, "api_key": key, "format": "json", "autocorrect": 1}))
+        return [t["name"].lower() for t in j.get("toptags", {}).get("tag", [])[:8]] or None
+    except Exception as e:
+        log("lastfm:", e); return None
+
+def judge_tags(tags):
+    top = tags[:5]
+    bad = [t for t in top if t in BAD_TAGS]
+    good = [t for t in top if t in OK_TAGS]
+    if bad: return False, "tags: " + ",".join(bad)
+    if "instrumental" in top or len(good) >= 2: return True, "tags ok: " + ",".join(good)
+    return False, "tags insuffisants: " + ",".join(top)
+
 def playlist_uris(tok, pid, limit=100):
     H = {"Authorization": f"Bearer {tok}"}
     for ep in ("items", "tracks"):
@@ -180,12 +242,24 @@ def main():
         else:
             dur = tr["duration_ms"] / 1000
             f = audio_features(tr["id"])
-            if not f: rec.update(ok=False, why="pas d'audio features")
+            artist = (s.get("authors") or s.get("performers") or "").split(",")[0]
+            if f:
+                ok, why = judge(f, dur)
             else:
-                ok, why = judge(f, dur); rec.update(ok=ok, why=why)
-                if ok and tr["uri"] in present: rec.update(ok=False, why="déjà dans la playlist")
-                elif ok and not DRY:
-                    add_top(tok, pid, tr["uri"], ep); present.insert(0, tr["uri"]); total += 1
+                ok, why = False, "aucune donnée"
+                dmin, dmax = CRIT["dur_min_s"], CRIT["dur_max_s"]
+                if not (dmin <= dur <= dmax):
+                    why = f"durée {dur:.0f}s"
+                else:
+                    ab = acousticbrainz(artist, s["title"])
+                    if ab: ok, why = judge_ab(ab)
+                    else:
+                        tg = lastfm_tags(artist, s["title"])
+                        if tg: ok, why = judge_tags(tg)
+            rec.update(ok=ok, why=why)
+            if ok and tr["uri"] in present: rec.update(ok=False, why="déjà dans la playlist")
+            elif ok and not DRY:
+                add_top(tok, pid, tr["uri"], ep); present.insert(0, tr["uri"]); total += 1
             rec["uri"] = tr["uri"]
         st["seen"][s["stepId"]] = rec
         log(("AJOUT " if rec["ok"] else "refus ") + label, "|", rec["why"])

@@ -20,6 +20,7 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
       - uses: actions/cache/save@v4
         if: always()
         with:
