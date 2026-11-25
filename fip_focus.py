@@ -11,9 +11,9 @@ DRY = "--dry" in sys.argv
 
 # --- Critères « strict » -------------------------------------------------
 CRIT = dict(
-    instrumentalness_min=0.60,  # pas de chant au premier plan
-    speechiness_max=0.08,       # ni rap, ni voix parlée
-    energy_max=0.60,
+    instrumentalness_min=0.35,  # pas de chant au premier plan
+    speechiness_max=0.10,       # ni rap, ni voix parlée
+    energy_max=0.65,
     loudness_min=-30.0,         # pas de morceau quasi inaudible / ambiance vide
     loudness_max=-6.0,          # pas de morceau écrasé / agressif
     tempo_min=0, tempo_max=999,   # tempo estimé trop peu fiable (doublements)
