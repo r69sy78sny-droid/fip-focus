@@ -6,7 +6,7 @@ import base64, json, os, re, sys, time, unicodedata, urllib.error, urllib.parse,
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.environ.get("STATE_PATH", os.path.join(HERE, "state.json"))
 CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
-MAX_TRACKS = 500
+MAX_TRACKS = 2000
 DRY = "--dry" in sys.argv
 
 # --- Critères « strict » -------------------------------------------------
