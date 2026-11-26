@@ -1,13 +1,13 @@
 name: FIP Focus
 on:
-  schedule: [{cron: "*/5 * * * *"}]
+  schedule: [{cron: "17 * * * *"}]   # filet de sécurité : relance la chaîne si elle s'est arrêtée
   workflow_dispatch:
 concurrency: {group: fip-focus, cancel-in-progress: false}
-permissions: {contents: read}
+permissions: {contents: read, actions: write}
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
@@ -15,7 +15,8 @@ jobs:
           path: state.json
           key: state-${{ github.run_id }}
           restore-keys: state-
-      - run: python3 fip_focus.py
+      # un passage toutes les 60 s pendant 5 h 40, puis on relance le même workflow
+      - run: python3 fip_focus.py --loop 60 20400
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
@@ -26,3 +27,8 @@ jobs:
         with:
           path: state.json
           key: state-${{ github.run_id }}
+      - name: Relancer la chaîne
+        if: success()
+        run: gh workflow run fip-focus.yml
+        env:
+          GH_TOKEN: ${{ github.token }}

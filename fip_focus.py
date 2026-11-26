@@ -267,4 +267,14 @@ def main():
     save_state(st)
 
 if __name__ == "__main__":
-    main()
+    if "--loop" in sys.argv:
+        # --loop <intervalle_s> <durée_s> : un passage toutes les <intervalle_s> secondes pendant <durée_s>
+        i = sys.argv.index("--loop"); every, span = int(sys.argv[i+1]), int(sys.argv[i+2])
+        end = time.time() + span
+        while time.time() < end:
+            t0 = time.time()
+            try: main()
+            except Exception as e: log("passage échoué:", e)
+            time.sleep(max(5, every - (time.time() - t0)))
+    else:
+        main()
